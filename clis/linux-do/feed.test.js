@@ -9,6 +9,20 @@ describe('linux-do feed metadata resolution', () => {
         __test__.resetMetadataCaches();
     });
 
+    it('executes the browser sniffer for an HTML 403 response', async () => {
+        const page = {
+            evaluate: vi.fn((source) => new Function('fetch', `return ${source}`)(vi.fn().mockResolvedValue({
+                status: 403,
+                ok: false,
+                url: 'https://linux.do/latest.json',
+                headers: { get: () => 'text/html; charset=utf-8' },
+                text: async () => '<html><title>Access denied</title>',
+            }))),
+        };
+        await expect(fetchLinuxDoJson(page, '/latest.json', { skipNavigate: true }))
+            .rejects.toBeInstanceOf(LoginWallError);
+    });
+
     it('maps a valid browser JSON envelope and uses the shared response sniffer', async () => {
         const page = {
             evaluate: vi.fn().mockResolvedValue({ kind: 'ok', data: { topic_list: { topics: [] } } }),
@@ -23,10 +37,10 @@ describe('linux-do feed metadata resolution', () => {
             kind: 'login-wall',
             sentinel: {
                 __loginWall: true,
-                status: 429,
+                status: 403,
                 url: 'https://linux.do/latest.json',
                 contentType: 'text/html',
-                bodyPreview: '<html><title>Too many requests</title>',
+                bodyPreview: '<html><title>Access denied</title>',
             },
         };
         await expect(fetchLinuxDoJson({ evaluate: vi.fn().mockResolvedValue(loginWall) }, '/latest.json', { skipNavigate: true }))
@@ -35,6 +49,8 @@ describe('linux-do feed metadata resolution', () => {
             .rejects.toBeInstanceOf(AuthRequiredError);
         await expect(fetchLinuxDoJson({ evaluate: vi.fn().mockResolvedValue({ kind: 'http', status: 429 }) }, '/latest.json', { skipNavigate: true }))
             .rejects.toMatchObject({ hint: expect.stringContaining('Stop retrying') });
+        await expect(fetchLinuxDoJson({ evaluate: vi.fn().mockResolvedValue({ kind: 'http', status: 'bad' }) }, '/latest.json', { skipNavigate: true }))
+            .rejects.toThrow('non-numeric HTTP status');
         await expect(fetchLinuxDoJson({ evaluate: vi.fn().mockResolvedValue({ kind: 'exception', detail: 'bridge failed' }) }, '/latest.json', { skipNavigate: true }))
             .rejects.toBeInstanceOf(CommandExecutionError);
     });

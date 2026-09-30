@@ -59,10 +59,10 @@ describe('linux-do topic-content', () => {
                 kind: 'login-wall',
                 sentinel: {
                     __loginWall: true,
-                    status: 429,
+                    status: 403,
                     url: 'https://linux.do/t/42.json?include_raw=true',
                     contentType: 'text/html',
-                    bodyPreview: '<html><title>Too many requests</title>',
+                    bodyPreview: '<html><title>Access denied</title>',
                 },
             }),
         };
@@ -73,6 +73,21 @@ describe('linux-do topic-content', () => {
         };
         await expect(command.func(rateLimitPage, { id: 42 }))
             .rejects.toMatchObject({ constructor: CommandExecutionError, hint: expect.stringContaining('Stop retrying') });
+        await expect(command.func({ evaluate: vi.fn().mockResolvedValue({ kind: 'http', status: 'bad' }) }, { id: 42 }))
+            .rejects.toThrow('non-numeric HTTP status');
+    });
+
+    it('executes the browser sniffer for an HTML 403 response', async () => {
+        const page = {
+            evaluate: vi.fn((source) => new Function('fetch', `return ${source}`)(vi.fn().mockResolvedValue({
+                status: 403,
+                ok: false,
+                url: 'https://linux.do/t/42.json?include_raw=true',
+                headers: { get: () => 'text/html; charset=utf-8' },
+                text: async () => '<html><title>Access denied</title>',
+            }))),
+        };
+        await expect(command.func(page, { id: 42 })).rejects.toBeInstanceOf(LoginWallError);
     });
     it('keeps topic adapter as a summarized first-page reader after the split', () => {
         const topicTs = fs.readFileSync(new URL('./topic.js', import.meta.url), 'utf8');

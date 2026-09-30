@@ -143,7 +143,7 @@ cli({
         if (result?.kind === 'login-wall') {
             throwIfLoginWall(result.sentinel, { url: requestPath });
         }
-        return mapSearchResult(result);
+        return mapSearchResult(result).slice(0, Number(kwargs.limit ?? 15));
     },
 });
 

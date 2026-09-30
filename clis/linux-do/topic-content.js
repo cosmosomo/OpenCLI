@@ -96,12 +96,12 @@ async function fetchTopicPayload(page, id) {
         throw new CommandExecutionError('linux.do returned an empty browser response');
     }
     if (result.kind === 'login-wall') {
-        if (result.sentinel.status === 401 || result.sentinel.status === 403) {
-            throw new AuthRequiredError(LINUX_DO_DOMAIN, `linux.do returned HTTP ${result.sentinel.status}`);
-        }
         throwIfLoginWall(result.sentinel, { url: `/t/${id}.json?include_raw=true` });
     }
     if (result.kind === 'http') {
+        if (typeof result.status !== 'number') {
+            throw new CommandExecutionError(`linux.do topic ${id} response reported a non-numeric HTTP status.`);
+        }
         if (result.status === 401 || result.status === 403) {
             throw new AuthRequiredError(LINUX_DO_DOMAIN, `linux.do returned HTTP ${result.status}`);
         }

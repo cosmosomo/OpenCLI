@@ -93,12 +93,12 @@ export async function fetchLinuxDoJson(page, apiPath, options = {}) {
         throw new CommandExecutionError('linux.do returned an empty browser response');
     }
     if (result.kind === 'login-wall') {
-        if (result.sentinel.status === 401 || result.sentinel.status === 403) {
-            throw new AuthRequiredError('linux.do', `linux.do returned HTTP ${result.sentinel.status}`);
-        }
         throwIfLoginWall(result.sentinel, { url: apiPath });
     }
     if (result.kind === 'http') {
+        if (typeof result.status !== 'number') {
+            throw new CommandExecutionError('linux.do response reported a non-numeric HTTP status.');
+        }
         if (result.status === 401 || result.status === 403) {
             throw new AuthRequiredError('linux.do', `linux.do returned HTTP ${result.status}`);
         }

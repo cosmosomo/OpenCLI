@@ -14,6 +14,13 @@ describe('reddit search adapter', () => {
     };
   }
 
+  function makeBrowserResponsePage(response) {
+    return {
+      goto: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn((source) => new Function('fetch', `return ${source}`)(vi.fn().mockResolvedValue(response))),
+    };
+  }
+
   it('exposes the full search-result shape including the 4 media columns', () => {
     expect(command?.columns).toEqual([
       'id', 'title', 'subreddit', 'author', 'score', 'comments', 'url',
@@ -70,6 +77,18 @@ describe('reddit search adapter', () => {
     expect(page.evaluate.mock.calls[0][0]).toContain('fetchJsonOrLoginWall');
   });
 
+  it('preserves the requested output limit when the API returns extra rows', async () => {
+    const page = makePage({
+      kind: 'ok',
+      rows: [
+        { data: { id: 'first', title: 'First' } },
+        { data: { id: 'second', title: 'Second' } },
+      ],
+    });
+    await expect(command.func(page, { query: 'agent harness', limit: 1 }))
+      .resolves.toHaveLength(1);
+  });
+
   it('converts HTML login walls into LoginWallError', async () => {
     const page = makePage({
       kind: 'login-wall',
@@ -80,6 +99,17 @@ describe('reddit search adapter', () => {
         contentType: 'text/html',
         bodyPreview: '<html><title>Access denied</title>',
       },
+    });
+    await expect(command.func(page, { query: 'agent harness' })).rejects.toBeInstanceOf(LoginWallError);
+  });
+
+  it('executes the browser sniffer for an HTML 403 response', async () => {
+    const page = makeBrowserResponsePage({
+      status: 403,
+      ok: false,
+      url: 'https://www.reddit.com/search.json',
+      headers: { get: () => 'text/html; charset=utf-8' },
+      text: async () => '<html><title>Access denied</title>',
     });
     await expect(command.func(page, { query: 'agent harness' })).rejects.toBeInstanceOf(LoginWallError);
   });
