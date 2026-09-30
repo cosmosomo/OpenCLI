@@ -1,8 +1,11 @@
 import { getRegistry } from '@jackwener/opencli/registry';
+import { CommandExecutionError, LoginWallError } from '@jackwener/opencli/errors';
 import fs from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { __test__ } from './topic-content.js';
 describe('linux-do topic-content', () => {
+    const command = getRegistry().get('linux-do/topic-content');
+
     it('prefers raw markdown when the topic payload includes it', () => {
         const result = __test__.extractTopicContent({
             title: 'Hello Linux.do',
@@ -46,9 +49,30 @@ describe('linux-do topic-content', () => {
         expect(result.content).toContain('> quoted');
     });
     it('registers topic-content with plain default output for markdown body rendering', () => {
-        const command = getRegistry().get('linux-do/topic-content');
         expect(command?.defaultFormat).toBe('plain');
         expect(command?.columns).toEqual(['content']);
+    });
+
+    it('surfaces HTML login walls and HTTP failures with actionable errors', async () => {
+        const loginWallPage = {
+            evaluate: vi.fn().mockResolvedValue({
+                kind: 'login-wall',
+                sentinel: {
+                    __loginWall: true,
+                    status: 429,
+                    url: 'https://linux.do/t/42.json?include_raw=true',
+                    contentType: 'text/html',
+                    bodyPreview: '<html><title>Too many requests</title>',
+                },
+            }),
+        };
+        await expect(command.func(loginWallPage, { id: 42 })).rejects.toBeInstanceOf(LoginWallError);
+
+        const rateLimitPage = {
+            evaluate: vi.fn().mockResolvedValue({ kind: 'http', status: 429 }),
+        };
+        await expect(command.func(rateLimitPage, { id: 42 }))
+            .rejects.toMatchObject({ constructor: CommandExecutionError, hint: expect.stringContaining('Stop retrying') });
     });
     it('keeps topic adapter as a summarized first-page reader after the split', () => {
         const topicTs = fs.readFileSync(new URL('./topic.js', import.meta.url), 'utf8');
